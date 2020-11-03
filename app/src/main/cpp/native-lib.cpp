@@ -17,6 +17,9 @@ extern "C" {
 //音频采样数据格式转换库
 #include "libswresample/swresample.h"
 #include "libswscale/swscale.h"
+
+#include "libavfilter/buffersink.h"
+#include "libavfilter/buffersrc.h"
 #include <libavutil/imgutils.h>
 }
 #define MAX_AUDIO_FRME_SIZE  2 * 44100
@@ -32,13 +35,11 @@ Java_com_zhidao_ffmpegndkdemo_MainActivity_stringFromJNI(
 
 void  SaveFrame(AVFrame *pFrame,  int  width,  int  height, int  index)
 {
-
     FILE  *pFile;
     char  szFilename[32];
     int   y;
 
     // Open file
-   // sprintf (szFilename,  "frame%d.ppm" , index);
     sprintf(szFilename, "%s_%d.jpeg", "/sdcard/", index);
     pFile= fopen (szFilename,  "wb" );
     LOGI("%s",szFilename);
@@ -146,19 +147,20 @@ Java_com_zhidao_ffmpegndkdemo_MainActivity_decodeVideo(JNIEnv *env, jobject thiz
     AVPacket *packet = av_packet_alloc();
     AVFrame *avFrame_in = av_frame_alloc();
     AVFrame *rgba_frame = av_frame_alloc();
-    int buffer_size = av_image_get_buffer_size(AV_PIX_FMT_RGBA, avCtx->width, avCtx->height, 1);
+    int buffer_size = av_image_get_buffer_size(AV_PIX_FMT_RGB24, avCtx->width, avCtx->height, 1);
     uint8_t *out_buffer = (uint8_t *) av_malloc(buffer_size * sizeof(uint8_t));
-    av_image_fill_arrays(rgba_frame->data, rgba_frame->linesize, out_buffer, AV_PIX_FMT_RGBA,
+    av_image_fill_arrays(rgba_frame->data, rgba_frame->linesize, out_buffer, AV_PIX_FMT_RGB24,
                          avCtx->width, avCtx->height, 1);
 
     SwsContext *pSwsContext = sws_getContext(avCtx->width, avCtx->height,
                                              avCtx->pix_fmt,
                                              avCtx->width, avCtx->height,
-                                             AV_PIX_FMT_RGBA,
+                                             AV_PIX_FMT_RGB24,
                                              SWS_BICUBIC, NULL, NULL, NULL);
     int index= 0;
 
     LOGI("解码器的名称：%s", "开始读取帧信息");
+
     // 开始读取帧
     while (av_read_frame(pAVFContext, packet) >= 0) {
         if (packet->stream_index == video_stream_index) {
@@ -175,7 +177,6 @@ Java_com_zhidao_ffmpegndkdemo_MainActivity_decodeVideo(JNIEnv *env, jobject thiz
             sws_scale(pSwsContext, avFrame_in->data, avFrame_in->linesize, 0, avCtx->height,
                       rgba_frame->data, rgba_frame->linesize);
 //            index++;
-//            SaveAsJPEG(rgba_frame,avCtx->width,avCtx->height,index);
             SaveFrame(rgba_frame,avCtx->width,avCtx->height,index++);
             if(index > 50) break;
             usleep(16*1000);
@@ -201,4 +202,3 @@ Java_com_zhidao_ffmpegndkdemo_MainActivity_decodeVideo(JNIEnv *env, jobject thiz
     // 释放 R1
     env->ReleaseStringUTFChars(path, str_);
 }
-
