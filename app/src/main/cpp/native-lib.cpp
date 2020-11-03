@@ -2,6 +2,7 @@
 #include <string>
 #include <android/log.h>
 #include <unistd.h>
+#include <bits/struct_file.h>
 
 #define LOGI(FORMAT, ...) __android_log_print(ANDROID_LOG_INFO,"jason",FORMAT,##__VA_ARGS__);
 #define LOGE(FORMAT, ...) __android_log_print(ANDROID_LOG_ERROR,"jason",FORMAT,##__VA_ARGS__);
@@ -33,14 +34,14 @@ Java_com_zhidao_ffmpegndkdemo_MainActivity_stringFromJNI(
 }
 
 
-void  SaveFrame(AVFrame *pFrame,  int  width,  int  height, int  index)
+void  SaveFrame(AVFrame *pFrame,  int  width,  int  height, long  index)
 {
     FILE  *pFile;
     char  szFilename[32];
     int   y;
 
     // Open file
-    sprintf(szFilename, "%s_%d.jpeg", "/sdcard/", index);
+    sprintf(szFilename, "%s_%ld.jpeg", "/sdcard/", index);
     pFile= fopen (szFilename,  "wb" );
     LOGI("%s",szFilename);
 
@@ -58,13 +59,12 @@ void  SaveFrame(AVFrame *pFrame,  int  width,  int  height, int  index)
 
     // Close file
     fclose (pFile);
-
 }
 
 
 extern "C"
 JNIEXPORT void JNICALL
-Java_com_zhidao_ffmpegndkdemo_MainActivity_decodeVideo(JNIEnv *env, jobject thiz, jstring path) {
+Java_com_zhidao_ffmpegndkdemo_MainActivity_decodeVideo(JNIEnv *env, jobject thiz, jstring path,jlong timeStamp) {
     // TODO: implement decodeVideo()
     const char *str_ = env->GetStringUTFChars(path, NULL);
     /**
@@ -148,7 +148,7 @@ Java_com_zhidao_ffmpegndkdemo_MainActivity_decodeVideo(JNIEnv *env, jobject thiz
     AVFrame *avFrame_in = av_frame_alloc();
     AVFrame *rgba_frame = av_frame_alloc();
     int buffer_size = av_image_get_buffer_size(AV_PIX_FMT_RGB24, avCtx->width, avCtx->height, 1);
-    uint8_t *out_buffer = (uint8_t *) av_malloc(buffer_size * sizeof(uint8_t));
+    auto out_buffer = (uint8_t *) av_malloc(buffer_size * sizeof(uint8_t));
     av_image_fill_arrays(rgba_frame->data, rgba_frame->linesize, out_buffer, AV_PIX_FMT_RGB24,
                          avCtx->width, avCtx->height, 1);
 
@@ -160,6 +160,12 @@ Java_com_zhidao_ffmpegndkdemo_MainActivity_decodeVideo(JNIEnv *env, jobject thiz
     int index= 0;
 
     LOGI("解码器的名称：%s", "开始读取帧信息");
+
+
+    ret = av_seek_frame(pAVFContext, -1, timeStamp * 1000, AVSEEK_FLAG_BACKWARD);//10(second)
+    if (ret<0) {
+        return;
+    }
 
     // 开始读取帧
     while (av_read_frame(pAVFContext, packet) >= 0) {
@@ -176,9 +182,8 @@ Java_com_zhidao_ffmpegndkdemo_MainActivity_decodeVideo(JNIEnv *env, jobject thiz
             /**进行类型转码,原始数据转为RGB**/
             sws_scale(pSwsContext, avFrame_in->data, avFrame_in->linesize, 0, avCtx->height,
                       rgba_frame->data, rgba_frame->linesize);
-//            index++;
-            SaveFrame(rgba_frame,avCtx->width,avCtx->height,index++);
-            if(index > 50) break;
+            SaveFrame(rgba_frame,avCtx->width,avCtx->height,timeStamp);
+            break;
             usleep(16*1000);
 
         }
