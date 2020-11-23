@@ -2,6 +2,7 @@
 #include <string>
 #include <android/log.h>
 #include <unistd.h>
+#include <bits/struct_file.h>
 
 #define LOGI(FORMAT, ...) __android_log_print(ANDROID_LOG_INFO,"jason",FORMAT,##__VA_ARGS__);
 #define LOGE(FORMAT, ...) __android_log_print(ANDROID_LOG_ERROR,"jason",FORMAT,##__VA_ARGS__);
@@ -17,9 +18,16 @@ extern "C" {
 //音频采样数据格式转换库
 #include "libswresample/swresample.h"
 #include "libswscale/swscale.h"
+
+#include "libavfilter/buffersink.h"
+#include "libavfilter/buffersrc.h"
 #include <libavutil/imgutils.h>
 }
 #define MAX_AUDIO_FRME_SIZE  2 * 44100
+#define __ANDROID_API__ 19
+
+
+
 
 extern "C" JNIEXPORT jstring JNICALL
 Java_com_zhidao_ffmpegndkdemo_MainActivity_stringFromJNI(
@@ -29,22 +37,101 @@ Java_com_zhidao_ffmpegndkdemo_MainActivity_stringFromJNI(
     return env->NewStringUTF(hello.c_str());
 }
 
+int encodejpg(const char *out_file,AVFrame *picture,AVCodecContext *pVideoCodecCtx) {
+    AVFormatContext* pFormatCtx;
+    AVOutputFormat* fmt;
+    AVStream* video_st;
+    AVCodecContext* pCodecCtx;
+    AVCodec* pCodec;
 
-void  SaveFrame(AVFrame *pFrame,  int  width,  int  height, int  index)
+    AVPacket pkt;
+    int got_picture=0;
+    int ret= -1;
+    pFormatCtx = avformat_alloc_context();
+    //Guess format
+    fmt = av_guess_format("mjpeg", NULL, NULL);
+    pFormatCtx->oformat = fmt;
+    //Output URL
+    if (avio_open(&pFormatCtx->pb,out_file, AVIO_FLAG_READ_WRITE) < 0){
+        LOGI("%s","11111111111");
+        return -1;
+    }
+    video_st = avformat_new_stream(pFormatCtx, 0);
+    if (video_st==NULL){
+        LOGI("%s","22222222");
+        return -1;
+    }
+
+    pCodecCtx = video_st->codec;
+    pCodecCtx->codec_id = fmt->video_codec;
+    pCodecCtx->codec_type = AVMEDIA_TYPE_VIDEO;
+    pCodecCtx->pix_fmt = AV_PIX_FMT_YUVJ420P;
+    pCodecCtx->time_base.num = 1;
+    pCodecCtx->time_base.den = 25;
+
+    //pCodecCtx->bit_rate = 20000;
+    //pCodecCtx->bit_rate_tolerance = 4000000;
+    pCodecCtx->compression_level = 10;
+    pCodecCtx->width = pVideoCodecCtx->width;
+    pCodecCtx->height = pVideoCodecCtx->height;
+    //Output some information
+    //av_dump_format(pFormatCtx, 0, out_file, 1);
+
+    pCodec = avcodec_find_encoder(pCodecCtx->codec_id);
+    if (!pCodec){
+        LOGI("%s","333333333333");
+        return -1;
+    }
+    if (avcodec_open2(pCodecCtx, pCodec,NULL) < 0){
+        LOGI("%s","444444444444");
+        return -1;
+    }
+
+    avformat_write_header(pFormatCtx,NULL);
+
+    int y_size = pCodecCtx->width * pCodecCtx->height;
+    LOGI("%s","55555555555");
+    av_new_packet(&pkt,y_size*3);//enough size
+
+    LOGI("%d,%s",ret,"avcodec_encode_video2前");
+    ret = avcodec_encode_video2(pCodecCtx, &pkt,picture, &got_picture);
+    LOGI("%d,%s",ret,"avcodec_encode_video2后");
+    if(ret < 0){
+        return -1;
+    }
+    if (got_picture==1){
+        pkt.stream_index = video_st->index;
+        ret = av_write_frame(pFormatCtx, &pkt);
+    }
+    av_free_packet(&pkt);
+    //Write Trailer
+    av_write_trailer(pFormatCtx);
+    if (video_st){
+        avcodec_close(video_st->codec);
+        av_free(picture);
+    }
+    avio_close(pFormatCtx->pb);
+    avformat_free_context(pFormatCtx);
+    return ret;
+}
+
+
+
+
+
+char * SaveFramePPM(AVFrame *pFrame, int  width, int  height, long  index)
 {
-
     FILE  *pFile;
-    char  szFilename[32];
+    static char  szFilename[32];
     int   y;
 
     // Open file
-   // sprintf (szFilename,  "frame%d.ppm" , index);
-    sprintf(szFilename, "%s_%d.jpeg", "/sdcard/", index);
-    pFile= fopen (szFilename,  "wb" );
+    sprintf(szFilename, "%s_%ld.ppm", "/sdcard/", index);
+    pFile= fopen (szFilename,  "wb+" );
     LOGI("%s",szFilename);
 
     if (pFile==NULL)
-        return ;
+        return nullptr;
 
     // Write header
     fprintf (pFile, "P6 %d %d 255 ", width, height);
@@ -57,15 +144,17 @@ void  SaveFrame(AVFrame *pFrame,  int  width,  int  height, int  index)
 
     // Close file
     fclose (pFile);
-
+    return szFilename;
 }
 
 
 extern "C"
-JNIEXPORT void JNICALL
-Java_com_zhidao_ffmpegndkdemo_MainActivity_decodeVideo(JNIEnv *env, jobject thiz, jstring path) {
+JNIEXPORT jstring JNICALL
+Java_com_zhidao_ffmpegndkdemo_MainActivity_decodeVideo(JNIEnv *env, jobject thiz, jstring path,jlong timeStamp,
+                                                       jstring save_name) {
     // TODO: implement decodeVideo()
     const char *str_ = env->GetStringUTFChars(path, NULL);
+    const char *saveName = env->GetStringUTFChars(save_name, NULL);
     /**
      * 第一步
      * 初始化网络组件
@@ -92,7 +181,7 @@ Java_com_zhidao_ffmpegndkdemo_MainActivity_decodeVideo(JNIEnv *env, jobject thiz
             //释放上下文
             avformat_free_context(pAVFContext);
         }
-        return;
+        return nullptr;
     }
     /**
      * 第三步
@@ -101,7 +190,7 @@ Java_com_zhidao_ffmpegndkdemo_MainActivity_decodeVideo(JNIEnv *env, jobject thiz
     ret = avformat_find_stream_info(pAVFContext, NULL);
     if (ret < 0) {
         LOGE("查找视频信息失败");
-        return;
+        return nullptr;
     }
     /**
      * 第四步
@@ -132,7 +221,7 @@ Java_com_zhidao_ffmpegndkdemo_MainActivity_decodeVideo(JNIEnv *env, jobject thiz
         if (avCtx) {
             avcodec_free_context(&avCtx);
         }
-        return;
+        return nullptr;
     }
     //输出视频信息
     LOGI("视频的文件格式：%s", pAVFContext->iformat->name);
@@ -146,19 +235,26 @@ Java_com_zhidao_ffmpegndkdemo_MainActivity_decodeVideo(JNIEnv *env, jobject thiz
     AVPacket *packet = av_packet_alloc();
     AVFrame *avFrame_in = av_frame_alloc();
     AVFrame *rgba_frame = av_frame_alloc();
-    int buffer_size = av_image_get_buffer_size(AV_PIX_FMT_RGBA, avCtx->width, avCtx->height, 1);
-    uint8_t *out_buffer = (uint8_t *) av_malloc(buffer_size * sizeof(uint8_t));
-    av_image_fill_arrays(rgba_frame->data, rgba_frame->linesize, out_buffer, AV_PIX_FMT_RGBA,
+    int buffer_size = av_image_get_buffer_size(AV_PIX_FMT_YUV420P, avCtx->width, avCtx->height, 1);
+    auto out_buffer = (uint8_t *) av_malloc(buffer_size * sizeof(uint8_t));
+    av_image_fill_arrays(rgba_frame->data, rgba_frame->linesize, out_buffer, AV_PIX_FMT_YUV420P,
                          avCtx->width, avCtx->height, 1);
 
     SwsContext *pSwsContext = sws_getContext(avCtx->width, avCtx->height,
                                              avCtx->pix_fmt,
                                              avCtx->width, avCtx->height,
-                                             AV_PIX_FMT_RGBA,
+                                             AV_PIX_FMT_YUV420P,
                                              SWS_BICUBIC, NULL, NULL, NULL);
     int index= 0;
 
     LOGI("解码器的名称：%s", "开始读取帧信息");
+
+
+    ret = av_seek_frame(pAVFContext, -1, timeStamp * 1000, AVSEEK_FLAG_BACKWARD);//10(second)
+    if (ret<0) {
+        return nullptr;
+    }
+
     // 开始读取帧
     while (av_read_frame(pAVFContext, packet) >= 0) {
         if (packet->stream_index == video_stream_index) {
@@ -174,11 +270,17 @@ Java_com_zhidao_ffmpegndkdemo_MainActivity_decodeVideo(JNIEnv *env, jobject thiz
             /**进行类型转码,原始数据转为RGB**/
             sws_scale(pSwsContext, avFrame_in->data, avFrame_in->linesize, 0, avCtx->height,
                       rgba_frame->data, rgba_frame->linesize);
-//            index++;
-//            SaveAsJPEG(rgba_frame,avCtx->width,avCtx->height,index);
-            SaveFrame(rgba_frame,avCtx->width,avCtx->height,index++);
-            if(index > 50) break;
-            usleep(16*1000);
+
+            LOGI("%s名称为",saveName);
+            rgba_frame->quality = 10;
+            rgba_frame->pts = 0;
+
+            int ret = encodejpg(saveName,rgba_frame,avCtx);
+            LOGI("%d解析后",ret);
+            return env->NewStringUTF("success");
+
+
+
 
         }
         // 释放 packet 引用
@@ -201,4 +303,3 @@ Java_com_zhidao_ffmpegndkdemo_MainActivity_decodeVideo(JNIEnv *env, jobject thiz
     // 释放 R1
     env->ReleaseStringUTFChars(path, str_);
 }
-
