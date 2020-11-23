@@ -19,7 +19,11 @@ import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.math.BigInteger;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.util.Arrays;
+import java.util.LinkedList;
 import java.util.List;
 
 import io.reactivex.Observable;
@@ -30,6 +34,9 @@ public class MainActivity extends AppCompatActivity {
 
     Disposable disposable;
     private final String TAG = "FFmpegNdk";
+    LinkedList<Long> timeList = new LinkedList<>();
+    LinkedList<String> picList = new LinkedList<>();
+    LinkedList<String> sList = new LinkedList<>();
 
     // Used to load the 'native-lib' library on application startup.
     static {
@@ -44,17 +51,23 @@ public class MainActivity extends AppCompatActivity {
         // Example of a call to a native method
         EditText tv = findViewById(R.id.sample_text);
         Button button = findViewById(R.id.buttonPanel);
+        timeList.add(100L);
+        timeList.add(200L);
+        timeList.add(300L);
+        timeList.add(400L);
+        timeList.add(500L);
+        timeList.add(600L);
+        timeList.add(700L);
+        timeList.add(800L);
+        timeList.add(900L);
         button.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View view) {
                 String text = tv.getText().toString();
                 Log.d(TAG,"输入时间戳为"+text);
                 if(!TextUtils.isEmpty(text)){
-                    long timeStamp = Long.parseLong(text);
-                    long videoStamp = 1598596515000L;
-                    long offset = timeStamp-videoStamp;
-                    Log.d(TAG,"偏移量为"+offset);
-                    dealVideoPathWithUsbOtg(4000);
+
+                    dealVideoPathWithUsbOtg(timeList);
 
                 }
             }
@@ -63,7 +76,7 @@ public class MainActivity extends AppCompatActivity {
     }
 
 
-    private void dealVideoPathWithUsbOtg(long timeStamp) {
+    private void dealVideoPathWithUsbOtg(LinkedList<Long> timeStamp) {
         disposable = initExtractFrameRx("/sdcard/Recfront_20200828_143515.mp4",timeStamp)
                 .subscribeOn(Schedulers.io())
                 .observeOn(Schedulers.io())
@@ -82,24 +95,58 @@ public class MainActivity extends AppCompatActivity {
      * @param path
      * @return
      */
-    public Observable<List<String>> initExtractFrameRx(final String path,final long timeStamp) {
+    public Observable<List<String>> initExtractFrameRx(final String path,final LinkedList<Long> times) {
 
         return Observable.create(modelObservableEmitter -> {
+            String basePath = Environment.getExternalStorageDirectory().getAbsolutePath()+File.separator;
+            String fileSufix = ".jpeg";
 
+            for(long time : times) {
+                String fileName = basePath+time+fileSufix;
+                int code = decodeVideo(path, time, fileName);
+                if(code == 0){
+                    picList.add(fileName);
+                }
+                Log.d(TAG,fileName+"返回值为:"+code);
+            }
 
-            String picPath = decodeVideo(path,timeStamp,"/sdcard/success.jpeg");
-
-           // Log.d("lei","文件头为："+getFileHeader(picPath));
-            //Bitmap bitmap = getimage(picPath);
-
-//            byte[] data = readStream(picPath);
-//            buff2Image(data,"/sdcard/test.jpg");
+            for(String url : picList){
+                String md5 = getMD5Three(url);
+                if(md5 != null){
+                    Log.d(TAG,url+"的MD5值为:"+md5);
+                    sList.add(md5);
+                }
+            }
 
             modelObservableEmitter.onComplete();
         });
     }
 
-    
+
+    public static String getMD5Three(String path) {
+        BigInteger bi = null;
+        try {
+            byte[] buffer = new byte[8192];
+            int len = 0;
+            MessageDigest md = MessageDigest.getInstance("MD5");
+            File f = new File(path);
+            FileInputStream fis = new FileInputStream(f);
+            while ((len = fis.read(buffer)) != -1) {
+                md.update(buffer, 0, len);
+            }
+            fis.close();
+            byte[] b = md.digest();
+            bi = new BigInteger(1, b);
+        } catch (NoSuchAlgorithmException | IOException e) {
+            e.printStackTrace();
+        }
+        if(bi != null) {
+            return bi.toString(16);
+        }else{
+            return null;
+        }
+    }
+
 
     /**
      * 获取图片的字节数组
@@ -133,5 +180,5 @@ public class MainActivity extends AppCompatActivity {
      */
     public native String stringFromJNI();
 
-    public  native String decodeVideo(String path,long timeStamp,String save_name);
+    public  native int decodeVideo(String path,long timeStamp,String save_name);
 }
