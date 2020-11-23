@@ -51,15 +51,16 @@ public class MainActivity extends AppCompatActivity {
         // Example of a call to a native method
         EditText tv = findViewById(R.id.sample_text);
         Button button = findViewById(R.id.buttonPanel);
-        timeList.add(100L);
-        timeList.add(200L);
-        timeList.add(300L);
-        timeList.add(400L);
-        timeList.add(500L);
-        timeList.add(600L);
-        timeList.add(700L);
-        timeList.add(800L);
-        timeList.add(900L);
+        timeList.add(1598596515000L);
+        timeList.add(1598596515100L);
+        timeList.add(1598596515200L);
+        timeList.add(1598596515300L);
+        timeList.add(1598596515400L);
+        timeList.add(1598596515500L);
+        timeList.add(1598596515600L);
+        timeList.add(1598596515700L);
+        timeList.add(1598596515800L);
+        timeList.add(1598596515900L);
         button.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View view) {
@@ -103,7 +104,10 @@ public class MainActivity extends AppCompatActivity {
 
             for(long time : times) {
                 String fileName = basePath+time+fileSufix;
-                int code = decodeVideo(path, time, fileName);
+                long offset = time - 1598596515000L;
+                 double realTime = offset/1000.0;
+                Log.d(TAG,"传入的时间戳为："+realTime);
+                int code = decodeVideo(path, realTime, fileName);
                 if(code == 0){
                     picList.add(fileName);
                 }
@@ -180,5 +184,5 @@ public class MainActivity extends AppCompatActivity {
      */
     public native String stringFromJNI();
 
-    public  native int decodeVideo(String path,long timeStamp,String save_name);
+    public  native int decodeVideo(String path,double timeStamp,String save_name);
 }

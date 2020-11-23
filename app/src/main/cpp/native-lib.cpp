@@ -143,7 +143,8 @@ char * SaveFramePPM(AVFrame *pFrame, int  width, int  height, long  index)
 
 extern "C"
 JNIEXPORT jint JNICALL
-Java_com_zhidao_ffmpegndkdemo_MainActivity_decodeVideo(JNIEnv *env, jobject thiz, jstring path,jlong timeStamp,
+Java_com_zhidao_ffmpegndkdemo_MainActivity_decodeVideo(JNIEnv *env, jobject thiz, jstring path,
+                                                       jdouble timeStamp,
                                                        jstring save_name) {
     // TODO: implement decodeVideo()
     const char *str_ = env->GetStringUTFChars(path, nullptr);
@@ -241,8 +242,13 @@ Java_com_zhidao_ffmpegndkdemo_MainActivity_decodeVideo(JNIEnv *env, jobject thiz
     int index= 0;
 
     LOGI("解码器的名称：%s", "开始读取帧信息");
+    //double sec = 1.25;//1.25秒
+    //double sec = 1.25;
+    int64_t ptsTime = timeStamp / av_q2d(pAVFContext->streams[video_stream_index]->time_base);
 
-    ret = av_seek_frame(pAVFContext, -1, timeStamp * 1000, AVSEEK_FLAG_BACKWARD|AVSEEK_FLAG_ANY);//10(second)
+    LOGI("*******第一个pts时间为：%ld,",(long)ptsTime);
+    //int64_t time = timeStamp* AV_TIME_BASE;
+    ret = av_seek_frame(pAVFContext, video_stream_index, ptsTime, AVSEEK_FLAG_BACKWARD);//10(second)
     if (ret<0) {
         return -1;
     }
@@ -256,6 +262,11 @@ Java_com_zhidao_ffmpegndkdemo_MainActivity_decodeVideo(JNIEnv *env, jobject thiz
                 LOGE("------->>>>>>:%d", ret);
                 continue;
             }
+
+            if(avFrame_in->pts < ptsTime){
+                continue;
+            }
+            LOGI("********第二个pts时间为：%ld",(long)avFrame_in->pts);
 
             LOGI("解码器的名称：%s", "解码成功，进行类型转码");
             /**解码成功**/
