@@ -1,9 +1,7 @@
-package com.zhidao.ffmpegndkdemo;
+package com.zhidao.informcollect;
 
 import androidx.appcompat.app.AppCompatActivity;
 
-import android.graphics.Bitmap;
-import android.graphics.BitmapFactory;
 import android.os.Bundle;
 import android.os.Environment;
 import android.text.TextUtils;
@@ -12,17 +10,13 @@ import android.view.View;
 import android.widget.Button;
 import android.widget.EditText;
 
-import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileInputStream;
-import java.io.FileNotFoundException;
-import java.io.FileOutputStream;
 import java.io.IOException;
 import java.math.BigInteger;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
-import java.util.Arrays;
 import java.util.LinkedList;
 import java.util.List;
 

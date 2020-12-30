@@ -28,14 +28,14 @@ extern "C" {
 
 
 
-
-extern "C" JNIEXPORT jstring JNICALL
-Java_com_zhidao_ffmpegndkdemo_MainActivity_stringFromJNI(
-        JNIEnv* env,
-        jobject /* this */) {
+extern "C"
+JNIEXPORT jstring JNICALL
+Java_com_zhidao_informcollect_MainActivity_stringFromJNI(JNIEnv *env, jobject thiz) {
+    // TODO: implement stringFromJNI()
     std::string hello = "Hello from C++";
     return env->NewStringUTF(hello.c_str());
 }
+
 
 int encodejpg(const char *out_file,AVFrame *picture,AVCodecContext *pVideoCodecCtx) {
     AVFormatContext* pFormatCtx;
@@ -143,9 +143,9 @@ char * SaveFramePPM(AVFrame *pFrame, int  width, int  height, long  index)
 
 extern "C"
 JNIEXPORT jint JNICALL
-Java_com_zhidao_ffmpegndkdemo_MainActivity_decodeVideo(JNIEnv *env, jobject thiz, jstring path,
-                                                       jdouble timeStamp,
-                                                       jstring save_name) {
+Java_com_zhidao_informcollect_MainActivity_decodeVideo(JNIEnv *env, jobject thiz, jstring path,
+                                                       jdouble time_stamp, jstring save_name) {
+    // TODO: implement decodeVideo()
     // TODO: implement decodeVideo()
     const char *str_ = env->GetStringUTFChars(path, nullptr);
     const char *saveName = env->GetStringUTFChars(save_name, nullptr);
@@ -184,6 +184,9 @@ Java_com_zhidao_ffmpegndkdemo_MainActivity_decodeVideo(JNIEnv *env, jobject thiz
     ret = avformat_find_stream_info(pAVFContext, NULL);
     if (ret < 0) {
         LOGE("查找视频信息失败");
+        if (pAVFContext) {
+            avformat_free_context(pAVFContext);
+        }
         return -1;
     }
     /**
@@ -244,43 +247,70 @@ Java_com_zhidao_ffmpegndkdemo_MainActivity_decodeVideo(JNIEnv *env, jobject thiz
     LOGI("解码器的名称：%s", "开始读取帧信息");
     //double sec = 1.25;//1.25秒
     //double sec = 1.25;
-    int64_t ptsTime = timeStamp / av_q2d(pAVFContext->streams[video_stream_index]->time_base);
+    int64_t ptsTime = time_stamp / av_q2d(pAVFContext->streams[video_stream_index]->time_base);
 
     LOGI("*******第一个pts时间为：%ld,",(long)ptsTime);
     //int64_t time = timeStamp* AV_TIME_BASE;
     ret = av_seek_frame(pAVFContext, video_stream_index, ptsTime, AVSEEK_FLAG_BACKWARD);//10(second)
     if (ret<0) {
+        if (pAVFContext) {
+            avformat_free_context(pAVFContext);
+        }
         return -1;
     }
-
     // 开始读取帧
     while (av_read_frame(pAVFContext, packet) >= 0) {
         if (packet->stream_index == video_stream_index) {
-            avcodec_send_packet(avCtx, packet);
-            ret = avcodec_receive_frame(avCtx, avFrame_in);
-            if (ret == AVERROR(EAGAIN)) {
-                LOGE("------->>>>>>:%d", ret);
-                continue;
+            int re = avcodec_send_packet(avCtx, packet);
+            if (re != 0)
+            {
+                avcodec_free_context(&avCtx);
+                return -1;
             }
+            while (avcodec_receive_frame(avCtx, avFrame_in) == 0) {
+                if (avFrame_in->pts < ptsTime) {
+                    continue;
+                }
+                LOGI("********第二个pts时间为：%ld", (long) avFrame_in->pts);
 
-            if(avFrame_in->pts < ptsTime){
-                continue;
+                sws_scale(pSwsContext, avFrame_in->data, avFrame_in->linesize, 0, avCtx->height,
+                          rgba_frame->data, rgba_frame->linesize);
+
+                LOGI("正在抽帧的图片名称为:%s", saveName);
+                rgba_frame->quality = 10;
+                rgba_frame->pts = 0;
+                LOGI("打印帧数--------------------");
+                int code = encodejpg(saveName, rgba_frame, avCtx);
+
+                // 释放 packet 引用
+                av_packet_unref(packet);
+                sws_freeContext(pSwsContext);
+                // 释放 R8
+                av_free(out_buffer);
+
+                // 释放 R6
+                av_frame_free(&avFrame_in);
+
+                // 释放 R5
+                av_packet_free(&packet);
+
+                // 关闭 R3
+                avcodec_close(avCtx);
+
+                avcodec_free_context(&avCtx);
+
+                avformat_close_input(&pAVFContext);
+
+                if (pAVFContext) {
+                    //释放上下文
+                    avformat_free_context(pAVFContext);
+                }
+
+                // 释放 R1
+                env->ReleaseStringUTFChars(path, str_);
+                return code;
+
             }
-            LOGI("********第二个pts时间为：%ld",(long)avFrame_in->pts);
-
-            LOGI("解码器的名称：%s", "解码成功，进行类型转码");
-            /**解码成功**/
-            /**进行类型转码,原始数据转为RGB**/
-            sws_scale(pSwsContext, avFrame_in->data, avFrame_in->linesize, 0, avCtx->height,
-                      rgba_frame->data, rgba_frame->linesize);
-
-            LOGI("正在抽帧的图片名称为:%s",saveName);
-            rgba_frame->quality = 10;
-            rgba_frame->pts = 0;
-
-            int code = encodejpg(saveName,rgba_frame,avCtx);
-            return code;
-
         }
         // 释放 packet 引用
         av_packet_unref(packet);

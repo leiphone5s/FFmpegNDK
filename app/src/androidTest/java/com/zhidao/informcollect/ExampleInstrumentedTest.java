@@ -1,4 +1,4 @@
-package com.zhidao.ffmpegndkdemo;
+package com.zhidao.informcollect;
 
 import android.content.Context;
 
